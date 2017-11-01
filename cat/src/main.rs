@@ -90,19 +90,14 @@ fn copy_to_stdout_decorated_or_die(from: &mut std::io::Read, decorators: &mut [B
         match from.read_to_end(&mut input) {
             Ok(0) => break,
             Ok(_) => {
-                for character in input {
-                    let mut truncate = false;
+                'character_loop: for character in input {
                     for decorator in decorators.iter_mut() {
-                        truncate = decorator.decorate(character, &mut output);
-
-                        if truncate {
-                            break;
+                        if decorator.decorate(character, &mut output) {
+                            break 'character_loop;
                         }
                     }
 
-                    if !truncate {
-                        output.push(character);
-                    }
+                    output.push(character);
                 }
                 io::stdout().write_all(&output).unwrap_or_else(
                     |_| cat_die!("I/O error"),
