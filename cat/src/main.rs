@@ -165,7 +165,7 @@ fn show_help() {
     println!("With no FILE, or when FILE is -, read standard input.");
     for option in OPTIONS {
         println!(
-            "  {}, {}\t {}",
+            "  {}, {}\n\t{}",
             option.shortname,
             option.longname,
             option.help
