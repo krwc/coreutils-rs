@@ -119,7 +119,7 @@ fn copy_to_stdout_decorated_or_die(reader: &mut std::io::Read, decorators: &Deco
             }
             if decorators.number {
                 if last_byte < 0 || last_byte == '\n' as i32 {
-                    output.append(&mut format!("{:6}: ", current_line).into_bytes());
+                    write!(&mut output, "{:6}: ", current_line).unwrap();
                     current_line += 1
                 }
             }
