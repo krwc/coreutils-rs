@@ -24,7 +24,7 @@ pub struct Decorators {
 
 impl Decorators {
     fn any(&self) -> bool {
-        return self.ends || self.number || self.squeeze;
+        self.ends || self.number || self.squeeze
     }
 }
 
@@ -52,7 +52,7 @@ fn copy_decorated(
         let mut p = 0;
         while p < len {
             // Attempt to minimize write calls by looking ahead for '\n' character.
-            let newline_offset = match input[p..].iter().position(|c| *c == '\n' as u8) {
+            let newline_offset = match input[p..].iter().position(|c| *c == b'\n') {
                 Some(q) => q as i32,
                 None => -1,
             };
@@ -82,9 +82,9 @@ fn copy_decorated(
             writer.write_all(&input[p..p + newline_offset as usize])?;
 
             if decorators.ends {
-                writer.write_all(&['$' as u8])?;
+                writer.write_all(&[b'$'])?;
             }
-            writer.write_all(&['\n' as u8])?;
+            writer.write_all(&[b'\n'])?;
             p += 1 + newline_offset as usize;
 
             if interactive {
@@ -103,7 +103,7 @@ fn copy_or_die(from: &mut std::io::Read, decorators: &Decorators, interactive: b
     }
 }
 
-fn get_file(name: &String) -> io::BufReader<fs::File> {
+fn get_file(name: &str) -> io::BufReader<fs::File> {
     match path::Path::new(name).metadata() {
         Err(e) => {
             match e.kind() {
@@ -120,21 +120,21 @@ fn get_file(name: &String) -> io::BufReader<fs::File> {
         }
     };
 
-    return match fs::File::open(name) {
+    match fs::File::open(name) {
         Err(_) => cat_die!("{}: unknown error", name),
         Ok(f) => BufReader::new(f),
-    };
-}
-
-fn cat_file(file: &String, decorators: &Decorators) {
-    if file == "-" {
-        copy_or_die(&mut io::stdin(), decorators, true);
-    } else {
-        copy_or_die(&mut get_file(&file), decorators, false);
     }
 }
 
-fn show_help(opts: getopts::Options) {
+fn cat_file(file: &str, decorators: &Decorators) {
+    if file == "-" {
+        copy_or_die(&mut io::stdin(), decorators, true);
+    } else {
+        copy_or_die(&mut get_file(file), decorators, false);
+    }
+}
+
+fn show_help(opts: &getopts::Options) {
     let brief =
         format!(
         "Usage: {}: [OPTION]... [FILENAME]...\n{}",
@@ -162,7 +162,7 @@ fn main() {
     };
 
     if options.opt_present("h") {
-        return show_help(opts);
+        return show_help(&opts);
     }
     if options.opt_present("v") {
         return println!(
