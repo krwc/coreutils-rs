@@ -3,6 +3,8 @@ use std::io::{self, Write, BufReader};
 use std::fs;
 use std::path;
 
+extern crate getopts;
+
 macro_rules! cat_die {
     ($fmt:expr, $($arg:tt)*) => ({
         eprintln!(concat!("cat: ", $fmt), $($arg)*);
@@ -13,59 +15,6 @@ macro_rules! cat_die {
         ::std::process::exit(1);
     });
 }
-
-/// Classification of cat's arguments
-#[derive(Debug, Clone, PartialEq)]
-pub enum CatArg {
-    Ends,
-    File(String),
-    Help,
-    Number,
-    Squeeze,
-    Stdin,
-    Version,
-}
-
-#[derive(Debug)]
-pub struct CatArgDef {
-    arg: CatArg,
-    shortname: &'static str,
-    longname: &'static str,
-    help: &'static str,
-}
-
-static OPTIONS: &'static [CatArgDef] = &[
-    CatArgDef {
-        arg: CatArg::Help,
-        shortname: "-h",
-        longname: "--help",
-        help: "show this message and exit",
-    },
-    CatArgDef {
-        arg: CatArg::Number,
-        shortname: "-n",
-        longname: "--number",
-        help: "number all output lines",
-    },
-    CatArgDef {
-        arg: CatArg::Ends,
-        shortname: "-E",
-        longname: "--show-ends",
-        help: "display $ at end of each line",
-    },
-    CatArgDef {
-        arg: CatArg::Squeeze,
-        shortname: "-s",
-        longname: "--squeeze-blank",
-        help: "squeeze consecutive empty lines into one",
-    },
-    CatArgDef {
-        arg: CatArg::Version,
-        shortname: "-v",
-        longname: "--version",
-        help: "output version information and exit",
-    },
-];
 
 pub struct Decorators {
     ends: bool,
@@ -177,87 +126,64 @@ fn get_file(name: &String) -> io::BufReader<fs::File> {
     };
 }
 
-fn cat_arg(arg: CatArg, decorators: &Decorators) {
-    let (mut readable, interactive) = match arg {
-        CatArg::File(ref name) => (Box::new(get_file(name)) as Box<io::Read>, false),
-        CatArg::Stdin => (Box::new(io::stdin()) as Box<io::Read>, true),
-        _ => return,
-    };
-    copy_or_die(&mut *readable, decorators, interactive);
-}
-
-fn show_help() {
-    println!(
-        "Usage: {}: [OPTION]... [FILENAME]...",
-        env::args().nth(0).unwrap()
-    );
-    println!(
-        "Partial implementation of standard GNU cat. Concatenates FILE(s) to standard output."
-    );
-    println!("");
-    println!("With no FILE, or when FILE is -, read standard input.");
-    for option in OPTIONS {
-        println!(
-            "  {}, {}\n\t{}",
-            option.shortname,
-            option.longname,
-            option.help
-        );
+fn cat_file(file: &String, decorators: &Decorators) {
+    if file == "-" {
+        copy_or_die(&mut io::stdin(), decorators, true);
+    } else {
+        copy_or_die(&mut get_file(&file), decorators, false);
     }
 }
 
-fn parse_args() -> Vec<CatArg> {
-    return env::args()
-        .skip(1)
-        .map(|arg| {
-            if arg == "-" {
-                return CatArg::Stdin;
-            }
-            for option in OPTIONS {
-                if option.shortname == arg || option.longname == arg {
-                    return option.arg.clone();
-                }
-            }
-            if arg.starts_with("-") {
-                cat_die!(
-                    "unrecognized option '{}'\nTry '{} --help' for more information",
-                    arg,
-                    env::args().nth(0).unwrap()
-                );
-            }
-            return CatArg::File(arg);
-        })
-        .collect();
+fn show_help(opts: getopts::Options) {
+    let brief =
+        format!(
+        "Usage: {}: [OPTION]... [FILENAME]...\n{}",
+        env::args().nth(0).unwrap(),
+        "Partial implementation of standard GNU cat. Concatenates FILE(s) to standard output.",
+    );
+    print!("{}", opts.usage(&brief));
 }
 
 fn main() {
-    let mut args = parse_args();
-
-    if args.iter().any(|e| *e == CatArg::Help) {
-        return show_help();
-    }
-    if args.iter().any(|e| *e == CatArg::Version) {
-        return println!("Partial implementation of GNU cat, version 1.0.1");
-    }
-
-    let decorators = Decorators {
-        ends: args.iter().any(|e| *e == CatArg::Ends),
-        number: args.iter().any(|e| *e == CatArg::Number),
-        squeeze: args.iter().any(|e| *e == CatArg::Squeeze),
+    let args: Vec<String> = env::args().collect();
+    let mut opts = getopts::Options::new();
+    opts.optflag("h", "help", "show this message and exit");
+    opts.optflag("n", "number", "number all output lines");
+    opts.optflag("E", "show-ends", "display $ at end of each line");
+    opts.optflag(
+        "s",
+        "squeeze-blank",
+        "squeeze consecutive empty lines into one",
+    );
+    opts.optflag("v", "version", "output version information and exit");
+    let options = match opts.parse(&args[1..]) {
+        Ok(m) => m,
+        Err(f) => cat_die!("{}", f.to_string()),
     };
 
-    let mut has_any_input = false;
-    for arg in args.iter() {
-        match *arg {
-            CatArg::File(_) | CatArg::Stdin => has_any_input = true,
-            _ => {}
-        }
+    if options.opt_present("h") {
+        return show_help(opts);
     }
-    if !has_any_input {
-        args.push(CatArg::Stdin);
+    if options.opt_present("v") {
+        return println!(
+            "Partial implementation of GNU cat, version {}",
+            env!("CARGO_PKG_VERSION")
+        );
+    }
+    let decorators = Decorators {
+        ends: options.opt_present("E"),
+        number: options.opt_present("n"),
+        squeeze: options.opt_present("s"),
+    };
+
+    let mut files: Vec<String> = vec![];
+    if options.free.is_empty() {
+        files.push("-".to_owned());
+    } else {
+        files.append(&mut options.free.clone());
     }
 
-    for arg in args {
-        cat_arg(arg, &decorators);
+    for file in files {
+        cat_file(&file, &decorators);
     }
 }
