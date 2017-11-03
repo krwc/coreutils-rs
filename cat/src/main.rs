@@ -79,71 +79,78 @@ impl Decorators {
     }
 }
 
-fn copy_to_stdout_raw_or_die(from: &mut std::io::Read) {
-    let stdout = io::stdout();
-    io::copy(from, &mut stdout.lock()).unwrap_or_else(|_| {
-        cat_die!("I/O error");
-    });
+fn copy_raw(from: &mut std::io::Read) -> io::Result<u64> {
+    io::copy(from, &mut io::stdout())
 }
 
-fn copy_to_stdout_decorated_or_die(reader: &mut std::io::Read, decorators: &Decorators) {
-    const BUFSIZE: usize = 8192;
+fn copy_decorated(
+    reader: &mut std::io::Read,
+    decorators: &Decorators,
+    interactive: bool,
+) -> io::Result<()> {
+    const BUFSIZE: usize = 65536;
     let stdout = io::stdout();
-    let mut writer = stdout.lock();
+    let mut writer = io::BufWriter::with_capacity(2 * BUFSIZE, stdout.lock());
     let mut input: [u8; BUFSIZE] = [0u8; BUFSIZE];
-    let mut output: Vec<u8> = vec![];
-
-    let mut last_byte: i32 = -1;
     let mut empty_streak: i32 = 1;
     let mut current_line: i32 = 1;
 
-    loop {
-        let len = match reader.read(&mut input) {
-            Ok(0) => break,
-            Ok(len) => len,
-            Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
-            _ => cat_die!("I/O read error"),
-        };
-
-        for character in &input[..len] {
-            if decorators.squeeze {
-                if *character == '\n' as u8 {
-                    empty_streak += 1;
-
-                    if empty_streak >= 3 {
-                        continue;
-                    }
-                } else {
-                    empty_streak = 0;
-                }
-            }
-            if decorators.number {
-                if last_byte < 0 || last_byte == '\n' as i32 {
-                    write!(&mut output, "{:6}: ", current_line).unwrap();
-                    current_line += 1
-                }
-            }
-            if decorators.ends {
-                if *character == '\n' as u8 {
-                    output.push('$' as u8);
-                }
-            }
-            output.push(*character);
-            last_byte = *character as i32;
+    while let Ok(len) = reader.read(&mut input) {
+        if len == 0 {
+            break;
         }
 
-        writer.write_all(&output).unwrap_or_else(|_| {
-            cat_die!("I/O write error");
-        });
-        output.clear();
+        let mut p = 0;
+        while p < len {
+            // Attempt to minimize write calls by looking ahead for '\n' character.
+            let newline_offset = match input[p..].iter().position(|c| *c == '\n' as u8) {
+                Some(q) => q as i32,
+                None => -1,
+            };
+
+            if newline_offset < 0 {
+                // New line not found. We can write entire chunk of data at once.
+                writer.write_all(&input[p..])?;
+                empty_streak = 0;
+                break;
+            }
+
+            if newline_offset == 0 {
+                empty_streak += 1;
+            } else {
+                empty_streak = 1;
+            }
+
+            if decorators.squeeze && empty_streak >= 3 {
+                p += 1;
+                continue;
+            }
+            if decorators.number {
+                write!(&mut writer, "{:6}: ", current_line)?;
+                current_line += 1;
+            }
+            // Write everything till the new line.
+            writer.write_all(&input[p..p + newline_offset as usize])?;
+
+            if decorators.ends {
+                writer.write_all(&['$' as u8])?;
+            }
+            writer.write_all(&['\n' as u8])?;
+            p += 1 + newline_offset as usize;
+
+            if interactive {
+                writer.flush()?;
+            }
+        }
     }
+    Ok(())
 }
 
-fn copy_to_stdout_or_die(from: &mut std::io::Read, decorators: &Decorators) {
+fn copy_or_die(from: &mut std::io::Read, decorators: &Decorators, interactive: bool) {
     if decorators.any() {
-        copy_to_stdout_decorated_or_die(from, decorators)
+        copy_decorated(from, decorators, interactive).unwrap();
     } else {
-        copy_to_stdout_raw_or_die(from)
+        copy_raw(from).unwrap();
     }
 }
 
@@ -171,12 +178,12 @@ fn get_file(name: &String) -> io::BufReader<fs::File> {
 }
 
 fn cat_arg(arg: CatArg, decorators: &Decorators) {
-    let mut readable: Box<io::Read> = match arg {
-        CatArg::File(ref name) => Box::new(get_file(name)),
-        CatArg::Stdin => Box::new(io::stdin()),
+    let (mut readable, interactive) = match arg {
+        CatArg::File(ref name) => (Box::new(get_file(name)) as Box<io::Read>, false),
+        CatArg::Stdin => (Box::new(io::stdin()) as Box<io::Read>, true),
         _ => return,
     };
-    copy_to_stdout_or_die(&mut *readable, decorators);
+    copy_or_die(&mut *readable, decorators, interactive);
 }
 
 fn show_help() {
