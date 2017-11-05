@@ -3,18 +3,9 @@ use std::io::{self, Write, BufReader};
 use std::fs;
 use std::path;
 
+#[macro_use(die)]
+extern crate utils;
 extern crate getopts;
-
-macro_rules! cat_die {
-    ($fmt:expr, $($arg:tt)*) => ({
-        eprintln!(concat!("cat: ", $fmt), $($arg)*);
-        ::std::process::exit(1);
-    });
-    ($fmt:expr) => ({
-        eprintln!(concat!("cat: ", $fmt));
-        ::std::process::exit(1);
-    });
-}
 
 pub struct Decorators {
     ends: bool,
@@ -116,21 +107,21 @@ fn get_file(name: &str) -> io::BufReader<fs::File> {
     match path::Path::new(name).metadata() {
         Err(e) => {
             match e.kind() {
-                io::ErrorKind::NotFound => cat_die!("{}: no such file or directory", name),
-                io::ErrorKind::PermissionDenied => cat_die!("{}: permission denied", name),
-                _ => cat_die!("{}: unknown error", name),
+                io::ErrorKind::NotFound => die!("{}: no such file or directory", name),
+                io::ErrorKind::PermissionDenied => die!("{}: permission denied", name),
+                _ => die!("{}: unknown error", name),
 
             }
         }
         Ok(info) => {
             if info.is_dir() {
-                cat_die!("{}: is a directory", name);
+                die!("{}: is a directory", name);
             }
         }
     };
 
     match fs::File::open(name) {
-        Err(_) => cat_die!("{}: unknown error", name),
+        Err(_) => die!("{}: unknown error", name),
         Ok(f) => BufReader::new(f),
     }
 }
@@ -167,7 +158,7 @@ fn main() {
     opts.optflag("v", "version", "output version information and exit");
     let options = match opts.parse(&args[1..]) {
         Ok(m) => m,
-        Err(f) => cat_die!("{}", f.to_string()),
+        Err(f) => die!("{}", f.to_string()),
     };
 
     if options.opt_present("h") {
