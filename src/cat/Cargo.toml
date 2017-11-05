@@ -4,7 +4,7 @@ version = "1.1.0"
 authors = ["Mateusz Krawiec <mateusz.krawiec6@gmail.com>"]
 
 [dependencies]
-getopts = "0.2"
+getopts = "*"
 
 [dependencies.utils]
 path = "../../utils"
