@@ -22,6 +22,11 @@ pub struct Decorators {
     squeeze: bool,
 }
 
+pub struct State {
+    empty_streak: i32,
+    current_line: i32,
+}
+
 impl Decorators {
     fn any(&self) -> bool {
         self.ends || self.number || self.squeeze
@@ -33,6 +38,7 @@ fn copy_raw(from: &mut std::io::Read) -> io::Result<u64> {
 }
 
 fn copy_decorated(
+    state: &mut State,
     reader: &mut std::io::Read,
     decorators: &Decorators,
     interactive: bool,
@@ -41,8 +47,6 @@ fn copy_decorated(
     let stdout = io::stdout();
     let mut writer = io::BufWriter::with_capacity(2 * BUFSIZE, stdout.lock());
     let mut input: [u8; BUFSIZE] = [0u8; BUFSIZE];
-    let mut empty_streak: i32 = 1;
-    let mut current_line: i32 = 1;
 
     while let Ok(len) = reader.read(&mut input) {
         if len == 0 {
@@ -60,23 +64,23 @@ fn copy_decorated(
             if newline_offset < 0 {
                 // New line not found. We can write entire chunk of data at once.
                 writer.write_all(&input[p..])?;
-                empty_streak = 0;
+                state.empty_streak = 0;
                 break;
             }
 
             if newline_offset == 0 {
-                empty_streak += 1;
+                state.empty_streak += 1;
             } else {
-                empty_streak = 1;
+                state.empty_streak = 1;
             }
 
-            if decorators.squeeze && empty_streak >= 3 {
+            if decorators.squeeze && state.empty_streak >= 3 {
                 p += 1;
                 continue;
             }
             if decorators.number {
-                write!(&mut writer, "{:6}: ", current_line)?;
-                current_line += 1;
+                write!(&mut writer, "{:6}: ", state.current_line)?;
+                state.current_line += 1;
             }
             // Write everything till the new line.
             writer.write_all(&input[p..p + newline_offset as usize])?;
@@ -95,9 +99,14 @@ fn copy_decorated(
     Ok(())
 }
 
-fn copy_or_die(from: &mut std::io::Read, decorators: &Decorators, interactive: bool) {
+fn copy_or_die(
+    state: &mut State,
+    from: &mut std::io::Read,
+    decorators: &Decorators,
+    interactive: bool,
+) {
     if decorators.any() {
-        copy_decorated(from, decorators, interactive).unwrap();
+        copy_decorated(state, from, decorators, interactive).unwrap();
     } else {
         copy_raw(from).unwrap();
     }
@@ -126,11 +135,11 @@ fn get_file(name: &str) -> io::BufReader<fs::File> {
     }
 }
 
-fn cat_file(file: &str, decorators: &Decorators) {
+fn cat_file(state: &mut State, file: &str, decorators: &Decorators) {
     if file == "-" {
-        copy_or_die(&mut io::stdin(), decorators, true);
+        copy_or_die(state, &mut io::stdin(), decorators, true);
     } else {
-        copy_or_die(&mut get_file(file), decorators, false);
+        copy_or_die(state, &mut get_file(file), decorators, false);
     }
 }
 
@@ -183,7 +192,11 @@ fn main() {
         files.append(&mut options.free.clone());
     }
 
+    let mut state = State {
+        empty_streak: 1,
+        current_line: 1,
+    };
     for file in files {
-        cat_file(&file, &decorators);
+        cat_file(&mut state, &file, &decorators);
     }
 }
