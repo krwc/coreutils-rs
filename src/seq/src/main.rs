@@ -326,15 +326,15 @@ fn main() {
     } else {
         1.0f64
     };
-    let last: f64 = if options.free.len() > 2 {
-        parse_float(&options.free[2])
+    let last: f64 = if options.free.len() >= 2 {
+        parse_float(&options.free[1])
     } else {
         parse_float(&options.free[0])
     };
 
     let config = SeqConfig {
         separator: options.opt_str("s").unwrap_or("\n".into()),
-        equal_width: options.opt_present("w"),
+        equal_width: false, // options.opt_present("w"),
         first: first,
         inc: inc,
         last: last,
