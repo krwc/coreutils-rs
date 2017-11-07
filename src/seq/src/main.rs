@@ -90,6 +90,7 @@ extern "C" {
 }
 
 fn print_formatted_f64(fmt: &str, value: f64) {
+    // TODO: make it locale-independent
     unsafe {
         let ret = printf(ffi::CString::new(fmt).unwrap().as_ptr(), value as c_double);
         if ret < 0 {
