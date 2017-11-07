@@ -5,6 +5,7 @@ authors = ["Mateusz Krawiec <mateusz.krawiec6@gmail.com>"]
 
 [dependencies]
 getopts = "*"
+libc = "*"
 
 [dependencies.utils]
 path = "../../utils"
